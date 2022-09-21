@@ -1,10 +1,27 @@
 package jnutis
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/gertd/go-pluralize"
 	"github.com/pkg/errors"
 )
 
 type IdMap map[int64]struct{}
+
+type Subject interface {
+}
+
+func subjectToString(s Subject) (sub string) {
+	sub = fmt.Sprintf("%T", s)
+	if strings.Contains(sub, ".") {
+		return
+	} else if idx := strings.Index(sub, "."); idx != -1 {
+		return sub[idx:]
+	}
+	return
+}
 
 func (m IdMap) list() (out []int64) {
 	if m.empty() {
@@ -27,9 +44,9 @@ func (m IdMap) empty() bool {
 	return m.size() == 0
 }
 
-type ErrorMap map[string]IdMap
+type ErrorMap[subject Subject] map[string]IdMap
 
-func (l *ErrorMap) add(errString string, ids ...int64) *ErrorMap {
+func (l *ErrorMap[subject]) add(errString string, ids ...int64) *ErrorMap[subject] {
 	if len(ids) == 0 || errString == "" {
 		return l
 	} else if _, ok := (*l)[errString]; !ok {
@@ -41,7 +58,7 @@ func (l *ErrorMap) add(errString string, ids ...int64) *ErrorMap {
 	return l
 }
 
-func (l *ErrorMap) merge(list ErrorMap) *ErrorMap {
+func (l *ErrorMap[subject]) merge(list ErrorMap[subject]) *ErrorMap[subject] {
 	if len(list) == 0 {
 		return l
 	}
@@ -51,7 +68,7 @@ func (l *ErrorMap) merge(list ErrorMap) *ErrorMap {
 	return l
 }
 
-func (l *ErrorMap) Error(subject string) error {
+func (l *ErrorMap[subject]) Error() error {
 	if !l.HasErrors() {
 		return nil
 	}
@@ -59,22 +76,29 @@ func (l *ErrorMap) Error(subject string) error {
 	for e := range *l {
 		total += (*l)[e].size()
 	}
-	return errors.Errorf("encountered %d errors with %d %s", l.Size(), total, subject)
+	client := pluralize.NewClient()
+	var s subject
+	var model string = subjectToString(s)
+	size := l.Size()
+	return errors.Errorf("encountered %s with %s", 
+		client.Pluralize("error", size, true),
+		client.Pluralize(model, size, true),
+	)
 }
 
-func (l *ErrorMap) HasErrors() bool {
+func (l *ErrorMap[subject]) HasErrors() bool {
 	return l.Size() > 0
 }
 
-func (l *ErrorMap) None() bool {
+func (l *ErrorMap[subject]) None() bool {
 	return !l.HasErrors()
 }
 
-func (l *ErrorMap) Size() int {
+func (l *ErrorMap[subject]) Size() int {
 	return len(*l)
 }
 
-func (l *ErrorMap) Data() (out map[string][]int64) {
+func (l *ErrorMap[subject]) Data() (out map[string][]int64) {
 	if l.None() {
 		return
 	}
