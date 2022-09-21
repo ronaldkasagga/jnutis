@@ -1,8 +1,8 @@
 package jnutis
 
 import (
+	"github.com/gertd/go-pluralize"
 	"github.com/sirupsen/logrus"
-"github.com/gertd/go-pluralize"
 )
 
 type Model interface {
@@ -22,7 +22,7 @@ func getIdentifiers[T Model](data []T) (out []int64) {
 	return
 }
 
-func ProcessEvents[T Model](log *logrus.Entry, subject string, processFn ProcessFunc[T], data []T) (failed ErrorMap) {
+func ProcessWithSplitRetry[T Model](log *logrus.Entry, subject string, processFn ProcessFunc[T], data []T) (failed ErrorMap) {
 	client := pluralize.NewClient()
 	failed = make(ErrorMap)
 	if size := len(data); size == 0 {
@@ -54,7 +54,7 @@ func ProcessEvents[T Model](log *logrus.Entry, subject string, processFn Process
 		} else {
 			log.WithField(client.Plural(subject), getIdentifiers(splitData[i])).
 				WithError(e).Info("retrying %s recursively", client.Plural(subject))
-			failed.merge(ProcessEvents(log, subject, processFn, splitData[i]))
+			failed.merge(ProcessWithSplitRetry(log, subject, processFn, splitData[i]))
 		}
 	}
 	return
