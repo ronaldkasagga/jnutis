@@ -8,6 +8,16 @@ import (
 	"github.com/pkg/errors"
 )
 
+type ErrorMap interface {
+	add(errString string, ids ...int64) ErrorMap
+	merge(list ErrorMap) ErrorMap
+	Error() error
+	HasErrors() bool
+	None() bool
+	Size() int
+	Data() (out map[string][]int64)
+}
+
 type IdMap map[int64]struct{}
 
 type Subject interface {
@@ -44,9 +54,9 @@ func (m IdMap) empty() bool {
 	return m.size() == 0
 }
 
-type ErrorMap[subject Subject] map[string]IdMap
+type errMap map[string]IdMap
 
-func (l *ErrorMap[subject]) add(errString string, ids ...int64) *ErrorMap[subject] {
+func (l *errMap) add(errString string, ids ...int64) *errMap {
 	if len(ids) == 0 || errString == "" {
 		return l
 	} else if _, ok := (*l)[errString]; !ok {
@@ -58,7 +68,7 @@ func (l *ErrorMap[subject]) add(errString string, ids ...int64) *ErrorMap[subjec
 	return l
 }
 
-func (l *ErrorMap[subject]) merge(list ErrorMap[subject]) *ErrorMap[subject] {
+func (l *errMap) merge(list errMap) *errMap {
 	if len(list) == 0 {
 		return l
 	}
@@ -68,7 +78,7 @@ func (l *ErrorMap[subject]) merge(list ErrorMap[subject]) *ErrorMap[subject] {
 	return l
 }
 
-func (l *ErrorMap[subject]) Error() error {
+func (l *errMap) Error(model string) error {
 	if !l.HasErrors() {
 		return nil
 	}
@@ -77,28 +87,26 @@ func (l *ErrorMap[subject]) Error() error {
 		total += (*l)[e].size()
 	}
 	client := pluralize.NewClient()
-	var s subject
-	var model string = subjectToString(s)
 	size := l.Size()
-	return errors.Errorf("encountered %s with %s", 
+	return errors.Errorf("encountered %s with %s",
 		client.Pluralize("error", size, true),
 		client.Pluralize(model, size, true),
 	)
 }
 
-func (l *ErrorMap[subject]) HasErrors() bool {
+func (l *errMap) HasErrors() bool {
 	return l.Size() > 0
 }
 
-func (l *ErrorMap[subject]) None() bool {
+func (l *errMap) None() bool {
 	return !l.HasErrors()
 }
 
-func (l *ErrorMap[subject]) Size() int {
+func (l *errMap) Size() int {
 	return len(*l)
 }
 
-func (l *ErrorMap[subject]) Data() (out map[string][]int64) {
+func (l *errMap) Data() (out map[string][]int64) {
 	if l.None() {
 		return
 	}
@@ -107,4 +115,51 @@ func (l *ErrorMap[subject]) Data() (out map[string][]int64) {
 		out[e] = m.list()
 	}
 	return
+}
+type _errorMap struct {
+	data errMap
+	model string
+}
+
+func (l *_errorMap) add(errString string, ids ...int64) ErrorMap {
+	if len(l.data) != 0 {
+		l.data.add(errString, ids...)
+	}
+	return l
+}
+
+func (l *_errorMap) merge(list ErrorMap) ErrorMap {
+	if len(l.data) > 0 && list != nil || list.HasErrors() {
+		l.data.merge(list.(*_errorMap).data)
+	}
+	return l
+}
+
+func (l *_errorMap) Error() error {
+	if len(l.data) > 0 {
+		return l.data.Error(l.model)
+	}
+	return nil
+}
+
+func (l *_errorMap) HasErrors() bool {
+	return len(l.data) > 0 && l.data.HasErrors()
+}
+
+func (l *_errorMap) None() bool {
+	return len(l.data) == 0 || l.data.None()
+}
+
+func (l *_errorMap) Size() int {
+	if len(l.data) == 0 {
+		return 0
+	}
+	return l.data.Size()
+}
+
+func (l *_errorMap) Data() (out map[string][]int64) {
+	if len(l.data) == 0 {
+		return
+	}
+	return l.data.Data()
 }

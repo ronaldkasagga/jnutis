@@ -9,9 +9,9 @@ type Model interface {
 	Identifier() int64
 }
 
-type ProcessFunc[T Model] func([]T) error
+type ProcessFunc func([]Model) error
 
-func getIdentifiers[T Model](data []T) (out []int64) {
+func getIdentifiers(data []Model) (out []int64) {
 	if len(data) == 0 {
 		return
 	}
@@ -22,11 +22,9 @@ func getIdentifiers[T Model](data []T) (out []int64) {
 	return
 }
 
-func ProcessWithSplitRetry[subject Subject, T Model](log *logrus.Entry, processFn ProcessFunc[T], data []T) (failed ErrorMap[subject]) {
+func ProcessWithSplitRetry(log *logrus.Entry, model string, processFn ProcessFunc, data []Model) (failed ErrorMap) {
 	client := pluralize.NewClient()
-	failed = make(ErrorMap[subject])
-	var s subject
-	var model string = subjectToString(s)
+	failed = &_errorMap{data: make(errMap), model: model}
 	if size := len(data); size == 0 {
 		log.Warnf("received no %s. doing nothing", client.Plural(model))
 		return
@@ -41,7 +39,7 @@ func ProcessWithSplitRetry[subject Subject, T Model](log *logrus.Entry, processF
 	}
 
 	mid := int(len(data) / 2)
-	splitData := [][]T{data[:mid], data[mid:]}
+	splitData := [][]Model{data[:mid], data[mid:]}
 	log.WithField(client.Plural(model), map[string][]int64{
 		"left":  getIdentifiers(splitData[0]),
 		"right": getIdentifiers(splitData[1]),
@@ -56,7 +54,7 @@ func ProcessWithSplitRetry[subject Subject, T Model](log *logrus.Entry, processF
 		} else {
 			log.WithField(client.Plural(model), getIdentifiers(splitData[i])).
 				WithError(e).Info("retrying %s recursively", client.Plural(model))
-			failed.merge(ProcessWithSplitRetry[subject](log, processFn, splitData[i]))
+			failed.merge(ProcessWithSplitRetry(log, model, processFn, splitData[i]))
 		}
 	}
 	return
