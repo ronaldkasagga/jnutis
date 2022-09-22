@@ -1,12 +1,14 @@
 package jnutis
 
 import (
-	"fmt"
-	"strings"
 
 	"github.com/gertd/go-pluralize"
 	"github.com/pkg/errors"
 )
+
+func ModelErrorMap(model string) ErrorMap {
+	return &_errorMap{data: make(errMap), model: model}
+}
 
 type ErrorMap interface {
 	add(errString string, ids ...int64) ErrorMap
@@ -19,19 +21,6 @@ type ErrorMap interface {
 }
 
 type IdMap map[int64]struct{}
-
-type Subject interface {
-}
-
-func subjectToString(s Subject) (sub string) {
-	sub = fmt.Sprintf("%T", s)
-	if strings.Contains(sub, ".") {
-		return
-	} else if idx := strings.Index(sub, "."); idx != -1 {
-		return sub[idx:]
-	}
-	return
-}
 
 func (m IdMap) list() (out []int64) {
 	if m.empty() {
